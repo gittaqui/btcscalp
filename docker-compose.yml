@@ -1,0 +1,84 @@
+name: btcscalp
+
+x-service: &service
+  build: .
+  image: btcscalp:local
+  restart: unless-stopped
+  init: true
+  read_only: true
+  user: "10001:10001"
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  pids_limit: 128
+  mem_limit: 768m
+  cpus: 1.5
+  tmpfs: [/tmp:size=64m,mode=1777]
+  env_file: .env
+  volumes:
+    - ./config:/app/config:ro
+    - ./data:/app/data
+    - ./models:/app/models:ro
+    - ./reports:/app/reports:ro
+  logging:
+    driver: json-file
+    options: {max-size: "10m", max-file: "3"}
+  stop_grace_period: 30s
+
+services:
+  paper:
+    <<: *service
+    profiles: [paper]
+    command: [paper, --config, config/local.yaml]
+    healthcheck:
+      test: [CMD, python, -m, trader, health, --config, config/local.yaml]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+  dashboard:
+    <<: *service
+    profiles: [paper, live, sandbox]
+    # monitoring.host must be 0.0.0.0 inside the container; host port is loopback-only.
+    command: [dashboard, --config, config/local-dashboard.yaml]
+    ports: ["127.0.0.1:8080:8080"]
+    mem_limit: 256m
+    cpus: 0.3
+  guardian:
+    <<: *service
+    profiles: [live]
+    command: [guardian, --mode, live, --config, config/local-live.yaml, --confirm, LIVE_BTCUSD]
+    mem_limit: 384m
+    cpus: 0.5
+    healthcheck:
+      test: [CMD, python, -c, "import time; from trader.storage.db import Store; s=Store('data/live.sqlite'); assert time.time_ns()-s.get('guardian_heartbeat_ns',0)<15e9"]
+      interval: 5s
+      timeout: 3s
+      retries: 6
+  live:
+    <<: *service
+    profiles: [live]
+    command: [live, --config, config/local-live.yaml, --confirm, LIVE_BTCUSD]
+    depends_on:
+      guardian: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, python, -m, trader, health, --config, config/local-live.yaml]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+  guardian-sandbox:
+    <<: *service
+    profiles: [sandbox]
+    command: [guardian, --mode, sandbox, --config, config/local-sandbox.yaml, --confirm, SANDBOX_BTCUSD]
+    mem_limit: 384m
+    cpus: 0.5
+    healthcheck:
+      test: [CMD, python, -c, "import time; from trader.storage.db import Store; s=Store('data/sandbox.sqlite'); assert time.time_ns()-s.get('guardian_heartbeat_ns',0)<15e9"]
+      interval: 5s
+      timeout: 3s
+      retries: 6
+  sandbox:
+    <<: *service
+    profiles: [sandbox]
+    command: [sandbox, --config, config/local-sandbox.yaml, --confirm, SANDBOX_BTCUSD]
+    depends_on:
+      guardian-sandbox: {condition: service_healthy}

@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BTCScalp Operations</title>
+<style>
+:root{color-scheme:dark;font-family:system-ui,sans-serif;background:#0b111c;color:#e9eef7}body{max-width:1280px;margin:40px auto;padding:0 24px}header{display:flex;justify-content:space-between;align-items:center;gap:20px}h1{font-size:28px;margin:0}small{color:#91a3bc}.tag{padding:8px 12px;background:#25324b;border-radius:5px}#notice{padding:16px;background:#1e2c40;border-left:4px solid #57bbff;margin:24px 0}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px}.card{background:#141e2e;padding:20px;border:1px solid #2a3950;border-radius:8px}.label{color:#9fb1c9;font-size:13px}.value{font-size:25px;margin-top:10px;font-variant-numeric:tabular-nums}button,input{font:inherit;padding:11px;border-radius:5px;border:1px solid #425b7b;background:#19283e;color:#fff}button{cursor:pointer}button.danger{background:#602b34}nav{display:flex;flex-wrap:wrap;gap:10px;margin:25px 0}pre{background:#101927;overflow:auto;padding:20px;font-size:12px}#auth{margin:24px 0;display:flex;gap:10px}input{min-width:230px}h2{font-size:19px;margin-top:30px}.warning{color:#ffbba8}
+</style></head><body>
+<header><div><h1>BTCScalp / Operations</h1><small>BTC/USD spot · deterministic execution</small></div><span class="tag" id="mode">DISCONNECTED</span></header>
+<div id="auth"><input id="token" type="password" autocomplete="off" placeholder="Operator access token" aria-label="Operator access token"><button id="connect">Connect</button></div>
+<div id="notice">NO DEPLOYABLE EDGE · Research and paper evidence are required before live approval.</div>
+<div class="grid" id="cards"></div>
+<nav><button data-action="pause">Pause entries</button><button data-action="resume">Resume entries</button><button data-action="cancel-all">Cancel entry orders</button><button data-action="flatten" class="danger">Flatten position</button><button data-action="kill" class="danger">Activate kill switch</button><button data-action="reset-kill">Reset kill latch</button></nav>
+<small>Pause and cancel retain native protection. Flatten and kill attempt price-bounded risk reduction. Commands require a running strategy or watchdog. Stop-limit orders may remain unfilled through a price gap.</small>
+<h2>Latest decision &amp; operator commands</h2><pre id="detail">Awaiting authenticated connection.</pre>
+<script src="/dashboard.js" defer></script></body></html>

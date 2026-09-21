@@ -1,0 +1,26 @@
+from typing import Protocol
+
+from trader.models import Account, Fees, Instrument, Order
+
+
+class Exchange(Protocol):
+    async def instrument(self) -> Instrument: ...
+    async def fees(self) -> Fees: ...
+    async def balances(self) -> Account: ...
+    async def submit(self, order: Order) -> dict: ...
+    async def status(self, client_id: str) -> dict: ...
+    async def cancel(self, exchange_id: str) -> dict: ...
+    async def open_orders(self) -> list[dict]: ...
+    async def close(self) -> None: ...
+
+
+class ExchangeError(RuntimeError):
+    pass
+
+
+class UnknownSubmission(ExchangeError):
+    """The server may have accepted an order; resubmitting is forbidden."""
+
+
+class Rejected(ExchangeError):
+    pass
