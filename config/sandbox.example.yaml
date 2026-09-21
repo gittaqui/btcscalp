@@ -1,0 +1,103 @@
+# baseline_btc must match the untouched sandbox BTC allocation.
+exchange:
+  name: gemini
+  environment: sandbox
+  rest_timeout_seconds: 5.0
+  requests_per_second: 2.0
+  reconciliation_seconds: 5.0
+  heartbeat_seconds: 5.0
+  maximum_retries: 3
+  baseline_btc: '1000'
+symbol: btcusd
+mode: sandbox
+frequency:
+  frequency_mode: low
+  signal_interval_ms: 500
+  decision_interval_ms: 500
+  minimum_seconds_between_entries: 1200.0
+  maximum_trades_per_hour: 3
+  maximum_trades_per_day: 36
+  cooldown_after_loss_seconds: 300.0
+  cooldown_after_consecutive_losses_seconds: 3600.0
+strategy:
+  family: micro_momentum
+  model_path: models/model.json
+  minimum_net_edge_bps: 3.0
+  confidence_threshold: 0.95
+  minimum_cell_samples: 100
+  label_horizon_seconds: 30
+  warmup_seconds: 900
+  minimum_liquidity_usd: 10000.0
+  maximum_volatility_bps: 30.0
+  minimum_volatility_bps: 0.05
+  imbalance_threshold: 0.2
+  maximum_fee_burden: 0.7
+  permitted_regimes:
+  - TRENDING_UP
+  - RANGING
+  - LOW_VOLATILITY
+  degradation_window: 50
+  active_features:
+  - imbalance
+  - direction
+execution:
+  maker_timeout_ms: 3000
+  maximum_requotes: 1
+  maximum_price_chase_bps: 2.0
+  minimum_fill_probability: 0.2
+  maximum_spread_bps: 3.0
+  slippage_bps: 2.0
+  latency_cost_bps: 1.0
+  adverse_selection_buffer_bps: 2.0
+  simulated_latency_ms: 250
+  cancel_latency_ms: 250
+  queue_multiplier: 1.5
+  participation_fraction: 0.1
+  emergency_limit_bps: 50.0
+  native_stop_limit_gap_bps: 50.0
+  exit_retry_seconds: 2.0
+fees:
+  maker_bps: null
+  taker_bps: null
+  source_note: ''
+  refresh_seconds: 1800
+risk:
+  risk_per_trade_pct: '0.10'
+  maximum_position_pct: '5'
+  maximum_daily_loss_pct: '2'
+  maximum_session_loss_pct: '2'
+  maximum_drawdown_pct: '5'
+  maximum_consecutive_losses: 5
+  maximum_open_positions: 1
+  leverage: 1
+  averaging_down: false
+  maximum_order_usd: '100'
+  maximum_btc_exposure: '0.01'
+  maximum_usd_exposure: '500'
+  liquidity_fraction: '0.01'
+  hard_stop_bps: '20'
+  volatility_stop_multiplier: '3'
+  take_profit_bps: '40'
+  trailing_stop_bps: '15'
+  break_even_trigger_bps: '25'
+  time_stop_seconds: 120
+  stale_data_ms: 2000
+  maximum_latency_ms: 1000
+  maximum_clock_drift_ms: 1000
+  maximum_api_errors: 3
+  maximum_order_rejections: 3
+  watchdog_timeout_seconds: 15
+  automatic_kill_reset: false
+logging:
+  level: INFO
+monitoring:
+  host: 127.0.0.1
+  port: 8080
+database:
+  path: data/sandbox.sqlite
+  record_market_events: true
+  snapshot_interval_seconds: 5.0
+notifications:
+  discord_enabled: false
+paper_starting_usd: '10000'
+evidence_path: reports/evidence.json

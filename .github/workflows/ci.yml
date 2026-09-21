@@ -1,0 +1,26 @@
+name: verify
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  python:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements-dev.lock
+      - run: python -m pip install --no-deps -e .
+      - run: ruff check trader tests
+      - run: ruff format --check trader tests
+      - run: pytest -q -m 'not sandbox'
+      - run: python -m trader synthetic --seconds 1200 --output data/ci.jsonl
+      - run: python -m trader backtest --config config/test-fixture.yaml --data data/ci.jsonl --output reports/ci.json
+      - run: python -m pip check
+  container:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t btcscalp:ci .
+      - run: docker run --rm btcscalp:ci --help
