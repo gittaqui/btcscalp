@@ -15,6 +15,10 @@ Engineering verification performed on 2026-09-21 using Python 3.12 in an isolate
 | Dashboard HTTP checks | Authentication enforced, origin checks enforced, confirmation required, command persisted |
 | Crash recovery mechanics | Real child process killed; lock released; persisted intent/kill and transaction behavior tested |
 | Configuration files / Compose structure | Parsed; model constraints and container security settings checked |
+| GitHub CI Python job | Passed locked install, lint/format, non-sandbox tests, CLI replay and dependency checks |
+| GitHub CI container job | Docker image build and container CLI startup passed |
+
+CI evidence: https://github.com/gittaqui/btcscalp/actions/runs/35653828110 (implementation commit `a5bd7eb1032c3663aa0ef132c8f38d5c146fac90`).
 
 Tests cover sequence gaps, duplicates, crossing/invalid levels, time reversal, trade direction, tick/quantity increments, fee discovery and HMAC payloads, unknown-order timeouts, 429/5xx errors, rejected orders, partial fills, cancel/fill races, queue position, IOC remainder cancellation, inventory mismatch, net accounting, stale/frequency/exposure/loss risk checks, live gates, label cutoff/overlap, confidence abstention, day-bootstrap reproducibility, kill persistence, separate environments, spread expansion, 5× volatility and 500 ms / 2 s / 10 s delayed execution.
 
@@ -24,7 +28,7 @@ The drawdown reporter also preserves adverse event-level excursions between peri
 
 - The Gemini public API smoke call did not complete successfully from this execution environment; it returned an unavailable/server-error outcome. Real WebSocket subscription, authenticated account permissions, native stop behavior and fee discovery must still be exercised from the intended deployment host.
 - Gemini sandbox end-to-end was not run: no sandbox credentials were supplied. The opt-in test is implemented and is skipped by default.
-- Docker Engine/Compose were not installed in this execution environment. The image and services were not built/launched locally. CI includes a container build/smoke job; inspect its actual results before deployment.
+- Docker Engine/Compose were not installed locally. GitHub CI successfully built the image and ran its CLI. The full Compose service group, persistence on an actual VPS and container-to-Gemini connectivity are still unverified.
 - No real production historical dataset, independently evaluated research edge, 14-day paper run or 500 completed paper trades exists for this implementation.
 - Live trading has not been enabled, no real exchange order has been sent, and no VPS has been provisioned.
 
