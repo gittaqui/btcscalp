@@ -95,8 +95,15 @@ class Store:
         ]
 
     def fill(self, fill: Fill) -> bool:
+        existing = self.db.execute("SELECT payload FROM fills WHERE fill_id=?", (fill.fill_id,)).fetchone()
+        if existing:
+            # An exchange correction is not a harmless duplicate. Never silently retain
+            # stale prices/fees under the same execution ID and misstate net P&L.
+            if Fill.model_validate_json(existing[0]) != fill:
+                raise ValueError("CONFLICTING_DUPLICATE_FILL")
+            return False
         cursor = self.db.execute(
-            "INSERT OR IGNORE INTO fills VALUES (?,?,?,?)",
+            "INSERT INTO fills VALUES (?,?,?,?)",
             (fill.fill_id, fill.client_id, fill.ts_ns, fill.model_dump_json()),
         )
         return cursor.rowcount == 1
@@ -109,6 +116,7 @@ class Store:
 
     def kill(self, reason, ts_ns=None):
         with self.transaction():
+            self.set("control_generation", self.get("control_generation", 0) + 1)
             self.set("killed", {"reason": reason, "ts_ns": ts_ns or time.time_ns()})
             self.set("paused", True)
             self.event("risk", {"reason": reason, "action": "KILL"}, ts_ns)
@@ -119,7 +127,10 @@ class Store:
         # Stop entry immediately, before the runtime consumes the command.
         with self.transaction():
             if action in {"pause", "cancel-all", "flatten", "kill"}:
+                self.set("control_generation", self.get("control_generation", 0) + 1)
                 self.set("paused", True)
+            if action in {"flatten", "kill"}:
+                self.set("flatten_requested", True)
             if action == "kill":
                 self.set("killed", {"reason": "OPERATOR_KILL", "ts_ns": time.time_ns()})
             cursor = self.db.execute(
@@ -129,6 +140,15 @@ class Store:
 
     def pending_commands(self):
         return self.db.execute("SELECT * FROM commands WHERE status='pending' ORDER BY id").fetchall()
+
+    def assert_control_unchanged(self, command_id: int, generation: int) -> None:
+        """Call inside the transaction that resumes/resets, after network awaits."""
+        newer_stop = self.db.execute(
+            "SELECT 1 FROM commands WHERE id>? AND action IN ('pause','cancel-all','flatten','kill') LIMIT 1",
+            (command_id,),
+        ).fetchone()
+        if newer_stop or self.get("control_generation", 0) != generation:
+            raise ValueError("NEWER_STOP_SUPERSEDES_COMMAND")
 
     def finish_command(self, command_id, result, success=True):
         self.db.execute(

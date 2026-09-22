@@ -180,6 +180,7 @@ async def dispatch(args):
                 "heartbeat_age_seconds": age,
                 "killed": store.get("killed"),
                 "paused": store.get("paused", False),
+                "protection_recovery": store.get("protection_recovery"),
                 "snapshot": store.get("snapshot"),
                 "active_orders": len(store.orders(True)),
                 "commands": [

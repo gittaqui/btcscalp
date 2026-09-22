@@ -29,11 +29,17 @@ Before a new order touches the network, its client ID and intent are durably rec
 
 The position ledger handles weighted entry price, multiple entry fills, multiple partial exits and fees. A trade observation closes only when inventory reaches zero. Fee currency must be USD; unsupported currencies and broken trades halt reconciliation. A fully executed IOC may be reported canceled; quantity and trade records determine its position impact.
 
+Duplicate execution IDs must carry identical fill details. Changed prices, quantities, fees or other execution fields cause reconciliation failure rather than silently retaining stale accounting. Once recorded, an order's exchange ID cannot change under the same client ID.
+
 All entry and protective orders traverse `RiskEngine.authorize`. The controller does not expose a taker-entry path. Sales cannot exceed reconciled available inventory; no leverage, shorting or averaging-down paths exist. Native stops use the guardian key so entry-key heartbeat cancellation cannot remove protection.
 
 ## Emergency behavior
 
 Kill = durable no-new-entry latch + cancellation of risk-increasing orders + attempted reduction of held inventory with a fresh book. Native stops remain if a book is unavailable. With a fresh book, flatten cancels protection before an IOC sale, reconciles, and restores protection on residual inventory. Replacing protection and selling are not exchange-atomic; sandbox failure certification is mandatory.
+
+Entry cancellations precede protection cancellation, and one failed cancellation does not suppress attempts on other targeted orders. Every live IOC rechecks current time, book freshness, reconciled account freshness, inventory reservations and its price floor at the risk gate. A failed transition latches a stop and attempts another reconciliation before restoring protection. Unknown IOC outcomes forbid overlapping replacement sells; an unsuccessful recovery is recorded explicitly for operator action. An API outage or process death can still interrupt the non-atomic transition.
+
+Stop commands and risk kills advance a durable control generation. Resume/reset capture that generation before reconciliation and compare it inside the same database transaction that clears the control state. A newer queued stop also invalidates older recovery commands. This prevents network waits or a second operator connection from allowing an older command to erase a newer stop.
 
 The guardian does not keep the entry key's heartbeat alive. Entry-session heartbeat cancellation is an exchange setting, configured by the operator. Native stops remain if both local processes stop, but a stop-limit can fail to execute through a price gap. Dust below the exchange minimum and ambiguous history are explicit stops, never treated as a flat account.
 

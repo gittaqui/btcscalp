@@ -81,10 +81,28 @@ class RiskEngine:
     ):
         instrument.validate_order(order)
         if order.side == "sell":
+            # Account availability and the local reservation ledger must both permit
+            # a reduction; an unresolved IOC may still fill after a timeout.
+            reserved = sum((o.remaining for o in self.store.orders(True) if o.side == "sell"), ZERO)
             if order.quantity > min(account.available_btc, portfolio.quantity):
                 raise RiskRejected("EXIT_EXCEEDS_AVAILABLE_INVENTORY")
+            if order.quantity + reserved > portfolio.quantity:
+                raise RiskRejected("EXIT_OVERLAPS_PENDING_SELL")
             if order.kind not in {"ioc", "stop"}:
                 raise RiskRejected("EXIT_TYPE_NOT_APPROVED")
+            if (
+                now < account.asof_ns
+                or now - account.asof_ns > max(10, self.config.exchange.reconciliation_seconds * 3) * SECOND
+            ):
+                raise RiskRejected("STALE_ACCOUNT")
+            if order.kind == "ioc":
+                if book.stale(now, self.config.risk.stale_data_ms):
+                    raise RiskRejected("STALE_DATA")
+                floor = instrument.price(
+                    book.bid * (1 - D(str(self.config.execution.emergency_limit_bps)) / BPS)
+                )
+                if order.price < floor:
+                    raise RiskRejected("EXIT_PRICE_OUTSIDE_APPROVED_BOUND")
             return
         c, s = self.config, self.store
         if order.kind != "maker":
