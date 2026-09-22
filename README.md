@@ -11,8 +11,7 @@ Use Python 3.12+ on Linux or Windows WSL2. All monetary calculations use `Decima
 ```bash
 git clone https://github.com/gittaqui/btcscalp.git
 cd btcscalp
-# Until the implementation PR is merged:
-git switch feat/spot-scalping-system
+git switch main
 python3.12 -m venv .venv
 source .venv/bin/activate
 python -m pip install --require-hashes -r requirements-dev.lock

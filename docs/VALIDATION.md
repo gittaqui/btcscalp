@@ -1,12 +1,12 @@
 # Validation record and release gates
 
-Engineering verification performed on 2026-09-21 using Python 3.12 in an isolated environment installed from `requirements-dev.lock`.
+Engineering verification updated on 2026-09-22 using Python 3.12 in an isolated environment installed with hash verification from `requirements-dev.lock`.
 
 ## Verified locally
 
 | Check | Result |
 |---|---|
-| Automated suite | 88 passed; 1 opt-in sandbox test skipped |
+| Automated suite | 114 passed; 1 opt-in sandbox test skipped |
 | Ruff lint and formatting | Passed |
 | Locked dependency compatibility | Passed in a clean virtual environment |
 | Synthetic tape → event replay → report | Passed; zero trades without a model; NO DEPLOYABLE EDGE |
@@ -15,14 +15,22 @@ Engineering verification performed on 2026-09-21 using Python 3.12 in an isolate
 | Dashboard HTTP checks | Authentication enforced, origin checks enforced, confirmation required, command persisted |
 | Crash recovery mechanics | Real child process killed; lock released; persisted intent/kill and transaction behavior tested |
 | Configuration files / Compose structure | Parsed; model constraints and container security settings checked |
-| GitHub CI Python job | Passed locked install, lint/format, non-sandbox tests, CLI replay and dependency checks |
-| GitHub CI container job | Docker image build and container CLI startup passed |
+| GitHub CI Python job (initial implementation) | Passed locked install, lint/format, non-sandbox tests, CLI replay and dependency checks |
+| GitHub CI container job (initial implementation) | Docker image build and container CLI startup passed |
 
 CI evidence: https://github.com/gittaqui/btcscalp/actions/runs/35653828110 (implementation commit `a5bd7eb1032c3663aa0ef132c8f38d5c146fac90`).
 
 Tests cover sequence gaps, duplicates, crossing/invalid levels, time reversal, trade direction, tick/quantity increments, fee discovery and HMAC payloads, unknown-order timeouts, 429/5xx errors, rejected orders, partial fills, cancel/fill races, queue position, IOC remainder cancellation, inventory mismatch, net accounting, stale/frequency/exposure/loss risk checks, live gates, label cutoff/overlap, confidence abstention, day-bootstrap reproducibility, kill persistence, separate environments, spread expansion, 5× volatility and 500 ms / 2 s / 10 s delayed execution.
 
 The drawdown reporter also preserves adverse event-level excursions between periodic dashboard/equity snapshots. These engineering fixtures are intentionally deterministic and do not represent a profitable trading history.
+
+## Emergency recovery follow-up, 2026-09-22
+
+Added 26 regression cases covering rejected IOC exits, a lost response after a partial fill, unresolved exit status, transient and persistent balance outages after native-stop cancellation, cancellation delays that stale the book, best-effort cancellation across multiple orders, stale/overlapping/poorly bounded sell intents, changed execution details under a duplicate fill ID, and changed exchange order identity.
+
+Operator-control tests include newer kill/pause commands arriving before and during reconciliation, a new risk kill during reconciliation, a stop from a separate SQLite connection, and successful explicit reset-then-resume. A newer stop wins; failed cancellation retains the kill and flatten request. Tests use the real controller, risk gate, live broker and SQLite ledger against an independently simulated venue with its own cash, inventory and order records.
+
+Failed exit transitions now attempt fresh reconciliation before restoring native protection. Unknown IOC outcomes prohibit overlapping replacements, and unrecoverable protection is exposed as `operator_required`. This narrows tested failure paths; it does not remove the exchange's non-atomic cancel/submit interval or replace the sandbox protocol below. Python source changes invalidate earlier approval artifacts and paper evidence; obtain fresh evidence for this revision.
 
 ## Not verified here
 

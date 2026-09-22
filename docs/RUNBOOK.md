@@ -7,7 +7,7 @@ Commands below run from the repository root on Ubuntu 24.04 / Python 3.12, or WS
 ```bash
 git clone https://github.com/gittaqui/btcscalp.git
 cd btcscalp
-git switch feat/spot-scalping-system
+git switch main
 python3.12 -m venv .venv
 source .venv/bin/activate
 python -m pip install --require-hashes -r requirements-dev.lock
@@ -225,6 +225,10 @@ python -m trader status --config config/local-live.yaml
 ```
 
 The command writes the kill latch immediately; cancellation/flattening is asynchronous. If the strategy is dead, the guardian observes the latch and attempts cancellation/reconciliation/reduction. Check actual exchange orders and balances. Neither a command response nor an exchange stop is a fill guarantee.
+
+If an exit fails after protection was canceled, the controller latches `EMERGENCY_EXIT_FAILED`, retains a flatten request, and attempts to reconcile before re-arming protection for the remaining inventory. `status` includes the most recent `protection_recovery` result and timestamp: `flat`, `protected`, or `operator_required`. This is an observation at that time, not a continuing fill or coverage guarantee. An unresolved IOC is never retried under a new ID or covered using stale inventory. `operator_required` / `PROTECTION_RECOVERY_UNCONFIRMED` means the exchange outcome or protection could not be verified; inspect Gemini's official order/balance interface and retain the ledger for recovery.
+
+Cancellation attempts continue across all targeted orders even if one fails. Entry risk is canceled before native protection is removed; book freshness is checked again after REST calls. A newer pause, flatten or kill supersedes an older resume/reset request, including commands received from another dashboard/CLI connection during reconciliation. The older request is marked failed; inspect the new stop before explicitly requesting recovery again.
 
 Recovery requires the underlying fault to be fixed, a fresh synchronized book, successful reconciliation, zero bot inventory and no outstanding orders:
 

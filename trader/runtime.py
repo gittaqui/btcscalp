@@ -25,13 +25,14 @@ async def process_commands(engine):
     store = engine.store
     for command in store.pending_commands():
         action, now = command["action"], time.time_ns()
+        generation = store.get("control_generation", 0)
         try:
             if action in {"pause", "cancel-all", "kill"}:
                 store.set("paused", True)
-                await engine.controller.cancel_all()
                 if action == "kill":
                     store.kill("OPERATOR_KILL")
                     store.set("flatten_requested", True)
+                await engine.controller.cancel_all()
             elif action == "flatten":
                 store.set("paused", True)
                 store.set("flatten_requested", True)
@@ -39,19 +40,26 @@ async def process_commands(engine):
             elif action == "resume":
                 if store.get("killed"):
                     raise ValueError("Reset kill explicitly after reconciliation")
-                if engine.book.stale(now, engine.config.risk.stale_data_ms):
-                    raise ValueError("Fresh market data required")
                 await engine.broker.reconcile()
-                store.set("paused", False)
+                with store.transaction():
+                    store.assert_control_unchanged(command["id"], generation)
+                    if store.get("killed") or store.get("flatten_requested"):
+                        raise ValueError("Kill or flatten recovery remains pending")
+                    if engine.book.stale(time.time_ns(), engine.config.risk.stale_data_ms):
+                        raise ValueError("Fresh market data required")
+                    store.set("paused", False)
             elif action == "reset-kill":
                 await engine.broker.reconcile()
-                if engine.broker.portfolio().quantity or store.orders(True):
-                    raise ValueError("Must be flat with no outstanding orders before reset")
-                if engine.book.stale(now, engine.config.risk.stale_data_ms):
-                    raise ValueError("Fresh synchronized book required")
-                store.set("killed", None)
-                store.set("paused", True)
-                store.set("order_rejections", 0)
+                with store.transaction():
+                    store.assert_control_unchanged(command["id"], generation)
+                    if engine.broker.portfolio().quantity or store.orders(True):
+                        raise ValueError("Must be flat with no outstanding orders before reset")
+                    if engine.book.stale(time.time_ns(), engine.config.risk.stale_data_ms):
+                        raise ValueError("Fresh synchronized book required")
+                    store.set("killed", None)
+                    store.set("paused", True)
+                    store.set("flatten_requested", False)
+                    store.set("order_rejections", 0)
                 # Loss baselines deliberately survive reset; a breached loss stop will re-latch.
             store.finish_command(command["id"], "Applied; resume remains explicit after kill reset")
         except Exception as exc:
@@ -309,8 +317,8 @@ async def guardian(config, confirmation):
                             with process_lock(config.database.path + ".execution.lockfile"):
                                 store.kill("WATCHDOG_OR_LATCHED_STOP")
                                 alerts.send("WATCHDOG", "Cancelling entry risk; reconciling inventory")
-                                await broker.reconcile()
                                 await controller.cancel_all()
+                                await broker.reconcile()
                                 await controller.flatten(time.time_ns(), "WATCHDOG")
                                 await controller.protect(time.time_ns())
                         except Exception as exc:

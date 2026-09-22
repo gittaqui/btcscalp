@@ -34,6 +34,7 @@ class LiveBroker:
             or str(response["symbol"]).lower() != "btcusd"
             or response["side"] != order.side
             or D(str(response["original_amount"])) != order.quantity
+            or (order.exchange_id is not None and str(response["order_id"]) != order.exchange_id)
         ):
             raise ExchangeError("ORDER_IDENTITY_MISMATCH")
         filled = D(str(response["executed_amount"]))
@@ -173,13 +174,27 @@ class Controller:
         return result
 
     async def cancel_all(self, include_protection=False):
+        failures = []
         for order in self.store.orders(True):
             if include_protection or order.kind != "stop":
-                await self.broker.cancel(order)
+                try:
+                    await self.broker.cancel(order)
+                except Exception as exc:
+                    # One unavailable order must not prevent attempts on the rest.
+                    failures.append(exc)
+        if failures:
+            raise ExchangeError("ORDER_CANCELLATION_INCOMPLETE") from failures[0]
+
+    def current_ns(self, event_ns):
+        # Live REST calls can outlast the book freshness budget. Replay keeps its
+        # deterministic event clock; live reductions re-check wall time after I/O.
+        return time.time_ns() if isinstance(self.broker, LiveBroker) else event_ns
 
     async def protect(self, now):
         if not isinstance(self.broker, LiveBroker):
             return
+        if any(o.side == "sell" and o.kind != "stop" for o in self.store.orders(True)):
+            raise ExchangeError("UNRESOLVED_EXIT_ORDER")
         portfolio = self.broker.portfolio()
         covered = sum((o.remaining for o in self.store.orders(True) if o.kind == "stop"), ZERO)
         missing = self.instrument.quantity(max(ZERO, portfolio.quantity - covered))
@@ -207,10 +222,54 @@ class Controller:
 
     async def flatten(self, now, reason="OPERATOR_FLATTEN"):
         self.store.set("paused", True) if reason == "OPERATOR_FLATTEN" else None
+        now = self.current_ns(now)
         if now - self.last_exit_ns < self.config.execution.exit_retry_seconds * SECOND:
             return
+        try:
+            await self._flatten(now, reason)
+        except Exception:
+            # Cancelling a native stop and sending an IOC is not atomic. A failed
+            # attempt must stay stopped and try to restore protection from newly
+            # reconciled inventory, never from a pre-submission cached balance.
+            self.store.kill("EMERGENCY_EXIT_FAILED", self.current_ns(now))
+            self.store.set("flatten_requested", True)
+            if isinstance(self.broker, LiveBroker):
+                await self.recover_protection(now)
+            raise
+
+    async def recover_protection(self, now):
+        try:
+            await self.broker.reconcile()
+            await self.protect(self.current_ns(now))
+            quantity = self.broker.portfolio().quantity
+            covered = sum(
+                (o.remaining for o in self.store.orders(True) if o.kind == "stop" and o.status == "open"),
+                ZERO,
+            )
+            status = "flat" if quantity == 0 else "protected" if covered >= quantity else "operator_required"
+            self.store.set("protection_recovery", {"status": status, "ts_ns": self.current_ns(now)})
+        except Exception as exc:
+            # In an outage neither the inventory nor a replacement can be proven.
+            # Preserve the original exit error and expose unresolved protection.
+            self.store.set(
+                "protection_recovery",
+                {"status": "operator_required", "error": type(exc).__name__, "ts_ns": self.current_ns(now)},
+            )
+            self.store.event("risk", {"reason": "PROTECTION_RECOVERY_UNCONFIRMED", "action": "ALERT"})
+
+    async def _flatten(self, now, reason):
         if not self.book.valid or self.book.stale(now, self.config.risk.stale_data_ms):
             await self.cancel_all(include_protection=False)
+            if isinstance(self.broker, LiveBroker):
+                await self.broker.reconcile()
+            await self.protect(self.current_ns(now))
+            return
+        # Cancel entry risk before removing protection. If cancellation fails,
+        # existing stops remain while the recovery path reconciles the outcome.
+        await self.cancel_all(include_protection=False)
+        await self.broker.reconcile()
+        now = self.current_ns(now)
+        if not self.book.valid or self.book.stale(now, self.config.risk.stale_data_ms):
             await self.protect(now)
             return
         await self.cancel_all(include_protection=True)
@@ -221,6 +280,7 @@ class Controller:
         portfolio, account = self.broker.portfolio(), self.broker.account()
         if portfolio.quantity <= 0:
             return
+        now = self.current_ns(now)
         if not self.book.valid or self.book.stale(now, self.config.risk.stale_data_ms):
             # Fresh book is needed for a price-bounded emergency sale. Re-arm native protection.
             await self.protect(now)
@@ -245,7 +305,7 @@ class Controller:
         self.last_exit_ns = now
         await self.place(order)
         await self.broker.reconcile()
-        await self.protect(now)
+        await self.protect(self.current_ns(now))
 
     async def manage_makers(self, decision, now):
         c = self.config
